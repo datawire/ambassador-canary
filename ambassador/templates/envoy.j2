@@ -1,0 +1,110 @@
+{
+  "listeners": [
+    {
+      "address": "tcp://0.0.0.0:{{ listeners.service_port }}",
+      {% if tls -%}
+      "ssl_context": {
+        {%- if tls.cert_chain_file -%}
+          "cert_chain_file": "{{ tls.cert_chain_file }}",
+          "private_key_file": "{{ tls.private_key_file }}"{{ "," if tls.cacert_chain_file }}
+        {%- endif -%}
+        {%- if tls.cacert_chain_file -%}
+          "ca_cert_file": "{{ tls.cacert_chain_file }}"{{ "," if tls.cert_required }}
+          {%- if tls.cert_required -%}"require_client_certificate": true{%- endif %}
+        {%- endif %}
+      },
+      {%- endif -%}
+      "filters": [
+        {
+          "type": "read",
+          "name": "http_connection_manager",
+          "config": {
+            "codec_type": "auto",
+            "stat_prefix": "ingress_http",
+            "access_log": [
+              {
+                "path": "/tmp/access_log"
+              }
+            ],
+            "route_config": {
+              "virtual_hosts": [
+                {
+                  "name": "backend",
+                  "domains": ["*"],
+                  "routes": [
+                    {% for route in routes %}
+                    {
+                      "timeout_ms": {{ route.timeout_ms or 500 }},
+                      {%- if route.prefix -%}"prefix": "{{ route.prefix }}",{% endif %}
+                      {%- if route.prefix_rewrite -%}"prefix_rewrite": "{{ route.prefix_rewrite }}",{% endif %}
+                      {%- if route.method -%}"headers": [ {
+                        "name": ":method",
+                        "value": "{{ route.method }}",
+                        "regex": {{ route.method_regex or 'false' }}
+                      } ],{% endif %}
+                      "weighted_clusters": {
+                          "clusters": [
+                              {% for wc in route.clusters %}
+                                 { "name": "{{wc.name}}", "weight": {{wc.weight}} }{{ "," if not loop.last }}
+                              {% endfor %}
+                          ]
+                      }
+                    }
+                    {{ "," if not loop.last }}
+                    {% endfor %}
+                  ]
+                }
+              ]
+            },
+            "filters": [
+              {% for filter in filters -%}
+              { 
+                "type": "{{ filter.type }}",
+                "name": "{{ filter.name }}",
+                "config": {{ filter.config | tojson }}
+              }{{ "," if not loop.last }}
+              {%- endfor %}
+            ]
+          }
+        }
+      ]
+    }    
+  ],
+  "admin": {
+    "address": "tcp://127.0.0.1:{{ listeners.admin_port }}",
+    "access_log_path": "/tmp/admin_access_log"
+  },
+  "cluster_manager": {
+    "clusters": [
+      {% for cluster in clusters -%}
+      {
+        "name": "{{ cluster.name }}",
+        "connect_timeout_ms": {{ cluster.timeout_ms or 250 }},
+        "type": "{{ cluster.type or 'strict_dns' }}",
+        "lb_type": "{{ cluster.lb_type or 'round_robin' }}",
+        "hosts": [
+          {% for url in cluster.urls -%}
+          {
+            "url": "{{ url }}"
+          }{{ "," if not loop.last }}
+          {% endfor %}
+        ]{%- if cluster.circuit_breakers -%},
+        "circuit_breakers": {
+          "default": {
+            "max_connections": {{ cluster.circuit_breakers.max_connections or 1 }},
+            "max_pending_requests": {{ cluster.circuit_breakers.max_pending or 1 }},
+            "max_retries": {{ cluster.circuit_breakers.max_retries or 3 }}
+          }
+        }{%- endif -%}{%- if cluster.outlier_detection -%},
+        "outlier_detection": {
+          "consecutive_5xx": {{ cluster.outlier_detection.consecutive_5xx or 5 }},
+          "max_ejection_percent": {{ cluster.outlier_detection.max_ejection or 100 }},
+          "interval_ms": {{ cluster.outlier_detection.interval_ms or 3000 }}
+        }{%- endif -%}
+      }{{ "," if not loop.last }}
+      {% endfor %}
+    ]
+  },
+  "statsd_udp_ip_address": "127.0.0.1:9125",
+  "stats_flush_interval_ms": 1000
+}

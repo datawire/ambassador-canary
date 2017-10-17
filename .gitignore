@@ -1,0 +1,24 @@
+*.pyc
+*~
+.python-version
+.DS_Store
+certs/
+venv
+__pycache__
+
+docker-demo/Dockerfile
+
+docs/yaml
+docs/_book
+docs/_site
+docs/Gemfile.lock
+docs/node_modules
+.netlify
+
+.forge
+forge.yaml
+
+# Editor nonsense
+.vscode
+.idea
+tags

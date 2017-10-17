@@ -1,0 +1,4 @@
+semantic_version
+gitpython
+docopt
+awscli
